@@ -1,3 +1,8 @@
 requests
 beautifulsoup4
-PyMuPDF
+pymupdf
+easyocr
+numpy
+torch
+torchvision
+Pillow
