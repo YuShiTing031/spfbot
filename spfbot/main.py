@@ -14,7 +14,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 TARGET_URL = "https://www.spf.com.tw/sinopacSPF/research/list.do?id=1709f20d3ff00000d8e2039e8984ed51"
 IMAGE_DIR = "images" 
-WEBHOOK_URL = "https://discord.com/api/webhooks/1520354013114007572/PNhvHBBgy17aS3v7YD1upFCHEc8hGlViGZbmtW42VNL1yOm3CoASi5S5zTZU39AT94bp"
+WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 def get_latest_pdf_url():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
