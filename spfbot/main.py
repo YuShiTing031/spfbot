@@ -22,8 +22,8 @@ def get_latest_pdf_url():
     soup = BeautifulSoup(response.text, "html.parser")
     
     # 自動獲取今天日期
-    #today_str = datetime.now().strftime("%Y/%m/%d")
-    today_str = "2026/06/26"
+    today_str = datetime.now().strftime("%Y/%m/%d")
+    #today_str = "2026/06/26"
     print(f"🔍 正在尋找日期為 {today_str} 的籌碼快訊...")
     
     data_ul = soup.find("ul", id="dataUl")
