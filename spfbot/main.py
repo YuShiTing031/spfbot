@@ -16,11 +16,13 @@ def get_latest_pdf_url():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
-    response = requests.get(TARGET_URL, headers=headers, verify=False, timeout=30)
+    response = requests.get(TARGET_URL, headers=headers, verify=False)
     soup = BeautifulSoup(response.text, "html.parser")
     
-    # 允許透過環境變數固定日期，若沒有設定則使用當天日期
-    today_str = os.getenv("SPF_REPORT_DATE") or datetime.now().strftime("%Y/%m/%d")
+    # 💡 週末測試用，先鎖定有資料的週五
+    today_str = "2026/06/26"
+    # 部署到雲端自動定時跑時請改成這行：
+    # today_str = datetime.now().strftime("%Y/%m/%d") 
     
     print(f"🔍 正在尋找日期為 {today_str} 的台指期籌碼快訊...")
     
@@ -46,7 +48,7 @@ def get_latest_pdf_url():
                     full_url = "https://www.spf.com.tw" + href
                 else:
                     full_url = href
-                # 💡 同時回傳 PDF 網址與當天的日期文字
+                # 同時回傳 PDF 網址與當天的日期文字
                 return full_url, date_text
                 
     return None, None
@@ -54,7 +56,6 @@ def get_latest_pdf_url():
 def pdf_to_two_images(pdf_url, date_str, split_ratio=0.53):
     """
     下載 PDF，並依據日期命名，切成上下兩張圖放入指定資料夾
-    :param split_ratio: 切分比例 (0.0 到 1.0 之間)。0.48 代表從高度 48% 的地方切開
     """
     # 1. 確保圖片資料夾存在
     if not os.path.exists(IMAGE_DIR):
@@ -65,7 +66,7 @@ def pdf_to_two_images(pdf_url, date_str, split_ratio=0.53):
     file_safe_date = date_str.replace("/", "-")
     
     print(f"📥 正在下載 PDF: {pdf_url}")
-    pdf_response = requests.get(pdf_url, verify=False, timeout=30)
+    pdf_response = requests.get(pdf_url, verify=False)
     pdf_data = pdf_response.content
     
     print(f"🎨 正在使用自訂比例 ({split_ratio}) 進行高解析度裁切...")
@@ -79,7 +80,7 @@ def pdf_to_two_images(pdf_url, date_str, split_ratio=0.53):
         page_width = page.rect.width
         page_height = page.rect.height
         
-        # 💡 關鍵：由你設定的比例來決定那一刀要切在什麼高度
+        # 由設定的比例來決定那一刀要切在什麼高度
         split_y = page_height * split_ratio  
         
         # 設定放大倍率
@@ -107,28 +108,25 @@ def pdf_to_two_images(pdf_url, date_str, split_ratio=0.53):
 
 def send_to_discord_multiple_images(image_paths, text_content):
     """同時發送多張圖片到 Discord"""
-    webhook_url = os.getenv("DISCORD_WEBHOOK", "").strip()
+    webhook_url = os.getenv("DISCORD_WEBHOOK")
     
-    if not webhook_url:
-        print("⚠️ 提示：未設定 DISCORD_WEBHOOK，無法發送至 Discord。")
-        return
-
     files = {}
     for i, path in enumerate(image_paths):
+        # 這裡會把本地路徑轉成純檔名，並以二進位（rb）開啟檔案直接上傳
         files[f"file{i}"] = (os.path.basename(path), open(path, "rb"), "image/png")
         
     payload = {"content": text_content}
     
-    response = requests.post(webhook_url, data=payload, files=files, timeout=30)
+    response = requests.post(webhook_url, data=payload, files=files)
     print(f"📬 Discord 傳送狀態碼: {response.status_code}")
     
+    # 傳送完畢後，安全關閉所有開啟的檔案
     for f in files.values():
         f[1].close()
 
-
 # 🚀 實際執行的主程式入口
 if __name__ == "__main__":
-    # 💡 順便檢查：如果資料夾裡還有之前殘留的舊 temp.pdf，先把它刪掉
+    # 檢查並清理殘留的 temp.pdf
     if os.path.exists("temp.pdf"):
         try:
             os.remove("temp.pdf")
@@ -151,7 +149,7 @@ if __name__ == "__main__":
                 f"📊 **永豐期貨 籌碼快訊圖片 ({report_date})**\n原始 PDF：{pdf_url}"
             )
             
-            # 💡 這裡也加上防呆，如果有些舊寫法不小心產生了 temp.pdf，跑完立刻刪除
+            # 再次防呆清理
             if os.path.exists("temp.pdf"):
                 os.remove("temp.pdf")
                 print("🧹 任務完成，已自動清理臨時 PDF 檔案。")
