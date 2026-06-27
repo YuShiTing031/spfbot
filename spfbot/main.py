@@ -4,154 +4,93 @@ import fitz  # PyMuPDF
 from bs4 import BeautifulSoup
 from datetime import datetime
 import urllib3
+import easyocr
+import numpy as np
+import re
+from PIL import Image
 
-# 隱藏不安全連線的警告訊息
+# 隱藏警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 TARGET_URL = "https://www.spf.com.tw/sinopacSPF/research/list.do?id=1709f20d3ff00000d8e2039e8984ed51"
-IMAGE_DIR = "images"  # 💡 指定存放圖片的資料夾名稱
+IMAGE_DIR = "images" 
+WEBHOOK_URL = "https://discord.com/api/webhooks/1520354013114007572/PNhvHBBgy17aS3v7YD1upFCHEc8hGlViGZbmtW42VNL1yOm3CoASi5S5zTZU39AT94bp"
 
 def get_latest_pdf_url():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     response = requests.get(TARGET_URL, headers=headers, verify=False)
     soup = BeautifulSoup(response.text, "html.parser")
     
-    # 💡 週末測試用，先鎖定有資料的週五
+    # 自動獲取今天日期
+    #today_str = datetime.now().strftime("%Y/%m/%d")
     today_str = "2026/06/26"
-    # 部署到雲端自動定時跑時請改成這行：
-    # today_str = datetime.now().strftime("%Y/%m/%d") 
-    
-    print(f"🔍 正在尋找日期為 {today_str} 的台指期籌碼快訊...")
+    print(f"🔍 正在尋找日期為 {today_str} 的籌碼快訊...")
     
     data_ul = soup.find("ul", id="dataUl")
-    if not data_ul:
-        print("❌ 找不到 id='dataUl' 的列表區塊")
-        return None, None
-        
     for li in data_ul.find_all("li"):
-        a_tag = li.find("a")
-        span_tag = li.find("span")
-        
-        if a_tag and span_tag:
+        a_tag, span_tag = li.find("a"), li.find("span")
+        if a_tag and span_tag and span_tag.get_text().strip() == today_str:
             href = a_tag.get("href", "")
-            title_text = a_tag.get_text().strip()
-            date_text = span_tag.get_text().strip()
-            
-            # 比對「台指期籌碼快訊」
-            if date_text == today_str and "台指期籌碼快訊" in title_text:
-                print(f"🎯 成功匹配！標題: {title_text} | 日期: {date_text}")
-                
-                if href.startswith("/"):
-                    full_url = "https://www.spf.com.tw" + href
-                else:
-                    full_url = href
-                # 同時回傳 PDF 網址與當天的日期文字
-                return full_url, date_text
-                
+            return ("https://www.spf.com.tw" + href) if href.startswith("/") else href, today_str
     return None, None
 
-def pdf_to_two_images(pdf_url, date_str, split_ratio=0.53):
-    """
-    下載 PDF，並依據日期命名，切成上下兩張圖放入指定資料夾
-    """
-    # 1. 確保圖片資料夾存在
-    if not os.path.exists(IMAGE_DIR):
-        os.makedirs(IMAGE_DIR)
-        print(f"📁 已自動創建資料夾：{IMAGE_DIR}/")
-
-    # 2. 將日期的斜線 / 換成橫線 - (2026/06/26 -> 2026-06-26)
-    file_safe_date = date_str.replace("/", "-")
+def analyze_image_data(image_path):
+    """OCR 辨識核心邏輯"""
+    reader = easyocr.Reader(['ch_tra', 'en'], gpu=False)
+    results = reader.readtext(np.array(Image.open(image_path)), detail=0)
+    text = "\n".join(results)
     
-    print(f"📥 正在下載 PDF: {pdf_url}")
-    pdf_response = requests.get(pdf_url, verify=False)
-    pdf_data = pdf_response.content
+    data = {"大盤": "未找到", "外資": "未找到", "投信": "未找到", "自營": "未找到"}
     
-    print(f"🎨 正在使用自訂比例 ({split_ratio}) 進行高解析度裁切...")
-    doc = fitz.open(stream=pdf_data, filetype="pdf")
-    
-    image_paths = []
-    
-    if doc.page_count > 0:
-        page = doc[0]  # 取得第一頁
-        
-        page_width = page.rect.width
-        page_height = page.rect.height
-        
-        # 由設定的比例來決定那一刀要切在什麼高度
-        split_y = page_height * split_ratio  
-        
-        # 設定放大倍率
-        zoom = 2.0
-        mat = fitz.Matrix(zoom, zoom)
-        
-        # 📐 裁切上半部 (從 0 切到 split_y)
-        rect_top = fitz.Rect(0, 0, page_width, split_y)
-        pix_top = page.get_pixmap(matrix=mat, clip=rect_top)
-        top_path = os.path.join(IMAGE_DIR, f"{file_safe_date}_top.png")
-        pix_top.save(top_path)
-        image_paths.append(top_path)
-        print(f"✅ 上半部儲存成功：{top_path}")
-        
-        # 📐 裁切下半部 (從 split_y 切到 總高度)
-        rect_bottom = fitz.Rect(0, split_y, page_width, page_height)
-        pix_bottom = page.get_pixmap(matrix=mat, clip=rect_bottom)
-        bottom_path = os.path.join(IMAGE_DIR, f"{file_safe_date}_bottom.png")
-        pix_bottom.save(bottom_path)
-        image_paths.append(bottom_path)
-        print(f"✅ 下半部儲存成功：{bottom_path}")
-        
-    doc.close()
-    return image_paths
-
-def send_to_discord_multiple_images(image_paths, text_content):
-    """同時發送多張圖片到 Discord"""
-    webhook_url = os.getenv("DISCORD_WEBHOOK")
-    
-    files = {}
-    for i, path in enumerate(image_paths):
-        # 這裡會把本地路徑轉成純檔名，並以二進位（rb）開啟檔案直接上傳
-        files[f"file{i}"] = (os.path.basename(path), open(path, "rb"), "image/png")
-        
-    payload = {"content": text_content}
-    
-    response = requests.post(webhook_url, data=payload, files=files)
-    print(f"📬 Discord 傳送狀態碼: {response.status_code}")
-    
-    # 傳送完畢後，安全關閉所有開啟的檔案
-    for f in files.values():
-        f[1].close()
-
-# 🚀 實際執行的主程式入口
-if __name__ == "__main__":
-    # 檢查並清理殘留的 temp.pdf
-    if os.path.exists("temp.pdf"):
-        try:
-            os.remove("temp.pdf")
-            print("🧹 已自動清除專案目錄下的舊 temp.pdf")
-        except Exception:
-            pass
-
-    # 同時獲取網址與網頁日期
-    pdf_url, report_date = get_latest_pdf_url()
-    
-    if pdf_url and report_date:
-        print(f"🎯 成功找到 PDF 網址: {pdf_url}")
-        # 開始執行下載、建資料夾、切圖、日期命名
-        saved_images = pdf_to_two_images(pdf_url, report_date)
-        
-        if saved_images:
-            # 發送到 Discord
-            send_to_discord_multiple_images(
-                saved_images, 
-                f"📊 **永豐期貨 籌碼快訊圖片 ({report_date})**\n原始 PDF：{pdf_url}"
-            )
+    # 1. 抓取大盤點數 (只抓 20000~100000 的數字)
+    for line in results:
+        num = re.sub(r"[^\d.]", "", line)
+        if num and 20000 < float(num) < 100000:
+            data["大盤"] = num
+            break
             
-            # 再次防呆清理
-            if os.path.exists("temp.pdf"):
-                os.remove("temp.pdf")
-                print("🧹 任務完成，已自動清理臨時 PDF 檔案。")
+    # 2. 抓取法人數據
+    for key in ["外資", "投信", "自營"]:
+        match = re.search(fr"{key}買賣超[\s\S]*?([+-]?\d+[\d,]*\.\d+|[+-]?\d+)", text)
+        if match:
+            val = match.group(1)
+            data[key] = f"{'+' if not val.startswith(('-', '+')) else ''}{val} 億"
+            
+    return data
+
+def process_pdf(pdf_url, date_str):
+    if not os.path.exists(IMAGE_DIR): os.makedirs(IMAGE_DIR)
+    file_date = date_str.replace("/", "-")
+    
+    pdf_response = requests.get(pdf_url, verify=False)
+    doc = fitz.open(stream=pdf_response.content, filetype="pdf")
+    page = doc[0]
+    
+    # 切圖
+    paths = []
+    for i, rect in enumerate([fitz.Rect(0, 0, page.rect.width, page.rect.height*0.53), 
+                              fitz.Rect(0, page.rect.height*0.53, page.rect.width, page.rect.height)]):
+        path = os.path.join(IMAGE_DIR, f"{file_date}_{'top' if i==0 else 'bottom'}.png")
+        page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=rect).save(path)
+        paths.append(path)
+    return paths
+
+def send_to_discord(paths, report):
+    files = {f"f{i}": (os.path.basename(p), open(p, "rb"), "image/png") for i, p in enumerate(paths)}
+    requests.post(WEBHOOK_URL, data={"content": report}, files=files)
+    for f in files.values(): f[1].close()
+
+if __name__ == "__main__":
+    url, date = get_latest_pdf_url()
+    if url:
+        paths = process_pdf(url, date)
+        data = analyze_image_data(paths[0])
+        
+        report = (f"📊 **永豐籌碼分析 ({date})**\n"
+                  f"📈 加權指數: {data['大盤']} 點\n"
+                  f"💰 外資: {data['外資']} | 💼 投信: {data['投信']} | 🏢 自營: {data['自營']}")
+        
+        send_to_discord(paths, report)
+        print("✅ 任務執行完畢，已發送至 Discord")
     else:
-        print("❌ 找不到符合該日期的籌碼快訊，請檢查網站或日期設定。")
+        print("❌ 今日尚無報告或找不到檔案")
