@@ -1,6 +1,6 @@
 # spfbot
 
-This repository contains a Python bot that scrapes the SPF research report page, downloads the latest PDF, splits it into two images, and sends them to Discord.
+每日下午自動至永豐期貨官網，拉取當日台股籌碼快報，並傳送至Discord 。
 
 ## Setup
 
