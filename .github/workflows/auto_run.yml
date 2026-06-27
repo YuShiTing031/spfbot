@@ -1,24 +1,36 @@
-name: Daily Stock Report
+name: Auto Fetch Share Report
+
 on:
   schedule:
-    - cron: '30 07 * * 1-5' # 台灣時間 15:30 執行 (UTC+8)
-  workflow_dispatch: # 允許手動觸發
+    - cron: '15 10 * * *'  # UTC 10:15 = 台灣時間 18:15 (建議依你的需求調整)
+  workflow_dispatch:      # 允許手動測試觸發
 
 jobs:
-  run-script:
+  run-spider:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: Install dependencies
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils
-          pip install requests beautifulsoup4 pymupdf easyocr numpy torch torchvision
+          sudo apt-get install -y libgl1-mesa-glx poppler-utils
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Run script
         env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }} # ⚠️ 安全起見，網址存在 Secrets
-        run: python main.py
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # 進入 spfbot 目錄再執行，這樣可以避免相對路徑找不到圖片的問題
+          cd spfbot
+          python main.py
