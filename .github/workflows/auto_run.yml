@@ -2,7 +2,8 @@ name: Auto Fetch Share Report
 
 on:
   schedule:
-    - cron: '15 10 * * *'  # 台灣時間 18:15
+    - cron: '30 15 * * *'  # 台灣時間 3:30
+      timezone: 'Asia/Taipei'
   workflow_dispatch:      # 允許你手動按鈕執行測試
 
 jobs:
