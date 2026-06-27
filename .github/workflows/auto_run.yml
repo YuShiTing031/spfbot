@@ -2,8 +2,8 @@ name: Auto Fetch Share Report
 
 on:
   schedule:
-    - cron: '15 10 * * *'  # UTC 10:15 = 台灣時間 18:15 (建議依你的需求調整)
-  workflow_dispatch:      # 允許手動測試觸發
+    - cron: '15 10 * * *'  # 台灣時間 18:15
+  workflow_dispatch:      # 允許你手動按鈕執行測試
 
 jobs:
   run-spider:
@@ -20,17 +20,19 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx poppler-utils
+          # 更新為 libgl1，解決舊套件無法安裝的問題
+          sudo apt-get install -y libgl1 poppler-utils
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          # 確保你的 requirements.txt 包含 easyocr, pymupdf, torch 等
           pip install -r requirements.txt
 
       - name: Run script
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          # 進入 spfbot 目錄再執行，這樣可以避免相對路徑找不到圖片的問題
+          # 先進入 spfbot 資料夾，確保程式讀取路徑正確
           cd spfbot
           python main.py
